@@ -37,17 +37,23 @@
     chartRange: $('chartRange'),
     progressText: $('progressText'),
     progressFill: $('progressFill'),
+    weeklyList: $('weeklyList'),
+    weeklyRange: $('weeklyRange'),
     heatmap: $('heatmap'),
     heatmapRange: $('heatmapRange'),
     recordTable: $('recordTable'),
     recordCount: $('recordCount'),
     listEmpty: $('listEmpty'),
+    pagination: $('pagination'),
     exportBtn: $('exportBtn'),
     importFile: $('importFile'),
     clearBtn: $('clearBtn'),
     todayLine: $('todayLine'),
+    greeting: $('greeting'),
     heightInput: $('heightInput'),
     heightSaveBtn: $('heightSaveBtn'),
+    nicknameInput: $('nicknameInput'),
+    nicknameSaveBtn: $('nicknameSaveBtn'),
     syncToken: $('syncToken'),
     syncAutoMerge: $('syncAutoMerge'),
     syncStatus: $('syncStatus'),
@@ -62,6 +68,8 @@
   var settings = load(SET_KEY, {});
   var syncState = { token: '', gistId: '', user: '' };
   var editingDate = null;
+  var listPage = 1;
+  var PAGE_SIZE = 10;
   var chartPoints = [];
   var toastTimer = null;
   var resizeTimer = null;
@@ -132,6 +140,7 @@
     renderStats();
     renderChart();
     renderProgress();
+    renderWeekly();
     renderHeatmap();
     renderTable();
   }
@@ -218,12 +227,16 @@
     var asc = sortedAsc();
     var desc = asc.slice().reverse();
     var n = desc.length;
+    var totalPages = Math.max(1, Math.ceil(n / PAGE_SIZE));
+    if (listPage > totalPages) { listPage = totalPages; }
+    var start = (listPage - 1) * PAGE_SIZE;
+    var pageRows = desc.slice(start, start + PAGE_SIZE);
 
     els.recordCount.textContent = n ? '共 ' + n + ' 条记录' : '';
     els.listEmpty.classList.toggle('hidden', n > 0);
 
-    els.recordTable.innerHTML = desc.map(function (r, i) {
-      var prevRec = desc[i + 1];
+    els.recordTable.innerHTML = pageRows.map(function (r, i) {
+      var prevRec = desc[start + i + 1];
       var deltaHtml = '<span class="delta zero">—</span>';
       if (prevRec) {
         var d = r.weight - prevRec.weight;
@@ -240,6 +253,20 @@
         '</td>' +
       '</tr>';
     }).join('');
+
+    renderPagination(totalPages);
+  }
+
+  function renderPagination(totalPages) {
+    if (totalPages <= 1) {
+      els.pagination.innerHTML = '';
+      return;
+    }
+    var html =
+      '<button type="button" class="btn small page-btn" data-page="' + (listPage - 1) + '"' + (listPage <= 1 ? ' disabled' : '') + '>上一页</button>' +
+      '<span class="page-info">第 ' + listPage + ' / ' + totalPages + ' 页</span>' +
+      '<button type="button" class="btn small page-btn" data-page="' + (listPage + 1) + '"' + (listPage >= totalPages ? ' disabled' : '') + '>下一页</button>';
+    els.pagination.innerHTML = html;
   }
 
   function renderChart() {
@@ -463,6 +490,47 @@
     els.heatmapRange.textContent = '最近 ' + (weeks * 7) + ' 天 · 已记录 ' + count + ' 天';
   }
 
+  function renderWeekly() {
+    var asc = sortedAsc();
+    var map = {};
+    asc.forEach(function (r) {
+      var d = new Date(r.date + 'T00:00:00');
+      var dow = (d.getDay() + 6) % 7;
+      var monday = new Date(d);
+      monday.setDate(d.getDate() - dow);
+      var key = keyOf(monday);
+      if (!map[key]) { map[key] = []; }
+      map[key].push(r.weight);
+    });
+    var weeks = Object.keys(map).sort().reverse().slice(0, 8);
+    els.weeklyRange.textContent = weeks.length ? '最近 ' + weeks.length + ' 周' : '';
+    if (!weeks.length) {
+      els.weeklyList.innerHTML = '<p class="weekly-empty muted">记录后自动按周统计</p>';
+      return;
+    }
+    var html = '';
+    weeks.forEach(function (key, idx) {
+      var ws = map[key];
+      var avg = ws.reduce(function (a, b) { return a + b; }, 0) / ws.length;
+      var nextKey = weeks[idx + 1];
+      var deltaHtml = '<span class="delta zero">—</span>';
+      if (nextKey) {
+        var prevAvg = map[nextKey].reduce(function (a, b) { return a + b; }, 0) / map[nextKey].length;
+        var diff = avg - prevAvg;
+        deltaHtml = '<span class="delta ' + deltaClass(diff) + '">' + (diff > 0 ? '+' : '') + fmtWeight(diff) + '</span>';
+      }
+      var monday = new Date(key + 'T00:00:00');
+      var sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      var label = (monday.getMonth() + 1) + '月' + monday.getDate() + '日 – ' + (sunday.getMonth() + 1) + '月' + sunday.getDate() + '日';
+      html += '<div class="weekly-row">' +
+        '<div class="weekly-info"><span class="weekly-label">' + label + '</span><span class="muted">' + ws.length + ' 天记录</span></div>' +
+        '<div class="weekly-val"><strong>' + fmtWeight(avg) + '</strong> kg ' + deltaHtml + '</div>' +
+      '</div>';
+    });
+    els.weeklyList.innerHTML = html;
+  }
+
   function bindChartTooltip() {
     els.chart.addEventListener('mousemove', function (e) {
       if (!chartPoints.length) { return; }
@@ -534,6 +602,7 @@
 
     save(REC_KEY, records);
     resetForm();
+    listPage = 1;
     renderAll();
   }
 
@@ -626,6 +695,26 @@
     showToast('身高已保存，BMI 已更新');
   }
 
+  function updateGreeting() {
+    var name = settings.nickname || 'Rachel';
+    els.greeting.textContent = '嗨，' + name + ' 👋';
+  }
+
+  function saveNickname() {
+    var raw = els.nicknameInput.value.trim();
+    if (raw === '') {
+      settings.nickname = null;
+      save(SET_KEY, settings);
+      updateGreeting();
+      showToast('昵称已恢复为默认');
+      return;
+    }
+    settings.nickname = raw.slice(0, 20);
+    save(SET_KEY, settings);
+    updateGreeting();
+    showToast('昵称已保存');
+  }
+
   function applyTheme() {
     var dark = settings.theme === 'dark';
     document.body.classList.toggle('dark', dark);
@@ -681,8 +770,14 @@
           settings.height = Math.round(Number(data.height) * 10) / 10;
           els.heightInput.value = settings.height;
         }
+        if (data && data.nickname && typeof data.nickname === 'string') {
+          settings.nickname = data.nickname.slice(0, 20);
+          els.nicknameInput.value = settings.nickname;
+          updateGreeting();
+        }
         save(REC_KEY, records);
         save(SET_KEY, settings);
+        listPage = 1;
         renderAll();
         showToast('导入成功');
       } catch (err) {
@@ -700,6 +795,7 @@
     records = [];
     save(REC_KEY, records);
     if (editingDate) { cancelEdit(); }
+    listPage = 1;
     renderAll();
     showToast('已清空所有记录');
   }
@@ -786,6 +882,7 @@
       exportedAt: new Date().toISOString(),
       goal: settings.goal || null,
       height: settings.height || null,
+      nickname: settings.nickname || null,
       records: records
     };
   }
@@ -960,6 +1057,11 @@
         settings.height = Math.round(Number(data.height) * 10) / 10;
         els.heightInput.value = settings.height;
       }
+      if (data.nickname && typeof data.nickname === 'string') {
+        settings.nickname = data.nickname.slice(0, 20);
+        els.nicknameInput.value = settings.nickname;
+        updateGreeting();
+      }
       save(REC_KEY, records);
       syncSaveSettings(new Date().toISOString());
       renderAll();
@@ -1025,6 +1127,12 @@
         els.heightInput.value = settings.height;
         changed = true;
       }
+      if (!settings.nickname && data.nickname && typeof data.nickname === 'string') {
+        settings.nickname = data.nickname.slice(0, 20);
+        els.nicknameInput.value = settings.nickname;
+        updateGreeting();
+        changed = true;
+      }
       if (changed) {
         save(REC_KEY, records);
         save(SET_KEY, settings);
@@ -1038,6 +1146,8 @@
   els.dateInput.value = todayStr();
   els.goalInput.value = settings.goal != null ? settings.goal : '';
   els.heightInput.value = settings.height != null ? settings.height : '';
+  els.nicknameInput.value = settings.nickname || '';
+  updateGreeting();
   (function fillTodayLine() {
     var d = new Date();
     var wd = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()];
@@ -1049,7 +1159,14 @@
   els.themeToggle.addEventListener('click', toggleTheme);
   els.goalSaveBtn.addEventListener('click', saveGoal);
   els.heightSaveBtn.addEventListener('click', saveHeight);
+  els.nicknameSaveBtn.addEventListener('click', saveNickname);
   els.recordTable.addEventListener('click', handleTableClick);
+  els.pagination.addEventListener('click', function (e) {
+    var btn = e.target.closest('button.page-btn');
+    if (!btn || btn.disabled) { return; }
+    listPage = parseInt(btn.getAttribute('data-page'), 10) || 1;
+    renderTable();
+  });
   els.exportBtn.addEventListener('click', exportData);
   els.importFile.addEventListener('change', handleImport);
   els.clearBtn.addEventListener('click', clearAll);

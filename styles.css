@@ -51,8 +51,15 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
+  width: 100%;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   background: var(--bg);
   color: var(--text);
@@ -61,6 +68,7 @@ body {
 }
 
 .flag-stripe {
+  width: 100%;
   height: 10px;
   background: linear-gradient(90deg,
     #000000 0%, #000000 25%,
@@ -70,6 +78,7 @@ body {
 }
 
 .site-header {
+  width: 100%;
   background: linear-gradient(135deg, var(--accent-strong), var(--accent));
   color: var(--header-text);
 }
@@ -77,7 +86,7 @@ body {
 .header-inner {
   max-width: 1080px;
   margin: 0 auto;
-  padding: calc(22px + env(safe-area-inset-top)) 20px 22px;
+  padding: calc(22px + env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) 22px max(20px, env(safe-area-inset-left));
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -148,6 +157,7 @@ body {
 .list-card,
 .data-card,
 .progress-card,
+.weekly-card,
 .heatmap-card {
   grid-column: 1 / -1;
 }
@@ -312,6 +322,12 @@ input:focus {
   border-top: none;
 }
 
+.nickname-row {
+  margin-top: 10px;
+  padding-top: 0;
+  border-top: none;
+}
+
 .progress-track {
   height: 14px;
   background: var(--hm-empty);
@@ -325,6 +341,47 @@ input:focus {
   background: linear-gradient(90deg, #1f1b24 0%, #8a8a8a 50%, var(--accent-strong) 100%);
   border-radius: 999px;
   transition: width 0.4s ease;
+}
+
+.weekly-list {
+  display: grid;
+  gap: 8px;
+}
+
+.weekly-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--hover);
+}
+
+.weekly-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.weekly-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.weekly-val {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.weekly-empty {
+  margin: 0;
+  padding: 8px 0;
 }
 
 body.dark .progress-fill {
@@ -559,6 +616,28 @@ tbody tr:last-child td {
   padding: 28px 0 12px;
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.page-btn {
+  min-width: 76px;
+}
+
+.page-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .data-actions {
   display: flex;
   flex-wrap: wrap;
@@ -666,15 +745,31 @@ tbody tr:last-child td {
   }
 
   .header-inner {
-    padding: calc(16px + env(safe-area-inset-top)) 16px 18px;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    gap: 12px;
+    padding: calc(16px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 18px max(16px, env(safe-area-inset-left));
   }
 
   .header-title h1 {
     font-size: 22px;
   }
 
+  .header-title {
+    width: 100%;
+    text-align: center;
+    padding: 0 44px;
+  }
+
   .greeting {
     font-size: 17px;
+  }
+
+  .header-icon {
+    position: absolute;
+    top: calc(14px + env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
   }
 
   .entry-form {

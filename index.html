@@ -12,10 +12,10 @@
   <header class="site-header">
     <div class="header-inner">
       <div class="header-title">
-        <p class="greeting">嗨，Rachel 👋</p>
+        <p class="greeting" id="greeting">嗨，Rachel 👋</p>
         <h1>⚖️ 每日体重记录</h1>
         <p class="today" id="todayLine">正在加载日期…</p>
-        <p class="quote">“不要因为一时的波动而放弃之前的努力。”</p>
+        <p class="quote">“平静面对一时的起伏才能稳稳走向目标那棵树。”</p>
       </div>
       <button type="button" id="themeToggle" class="icon-btn header-icon" title="切换深色 / 浅色模式" aria-label="切换主题">🌙</button>
     </div>
@@ -52,6 +52,11 @@
         <label for="heightInput">身高（cm）</label>
         <input type="number" id="heightInput" min="100" max="250" step="0.5" placeholder="用于计算 BMI">
         <button type="button" class="btn small" id="heightSaveBtn">保存身高</button>
+      </div>
+      <div class="goal-row nickname-row">
+        <label for="nicknameInput">显示昵称</label>
+        <input type="text" id="nicknameInput" maxlength="20" placeholder="例如：Rachel">
+        <button type="button" class="btn small" id="nicknameSaveBtn">保存昵称</button>
       </div>
     </section>
 
@@ -103,6 +108,14 @@
       </div>
     </section>
 
+    <section class="card weekly-card">
+      <div class="card-head">
+        <h2>周平均体重</h2>
+        <span class="muted" id="weeklyRange"></span>
+      </div>
+      <div class="weekly-list" id="weeklyList"></div>
+    </section>
+
     <section class="card chart-card">
       <div class="card-head">
         <h2>趋势</h2>
@@ -142,6 +155,7 @@
           <tbody id="recordTable"></tbody>
         </table>
       </div>
+      <div class="pagination" id="pagination"></div>
       <div class="list-empty hidden" id="listEmpty">还没有记录，从“记一笔”开始吧。</div>
     </section>
 
