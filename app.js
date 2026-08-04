@@ -627,6 +627,9 @@
     }
     var last = settings.sync && settings.sync.lastSync;
     var text = '已连接：' + (syncState.user || 'GitHub') + '，云端存储已就绪';
+    if (syncState.gistId) {
+      text += '（编号 ' + syncState.gistId + '）';
+    }
     if (last) {
       text += '，上次同步 ' + new Date(last).toLocaleString('zh-CN');
     }
@@ -667,6 +670,27 @@
     };
   }
 
+  function parseGistFile(g) {
+    var f = g && g.files && g.files['weight-tracker.json'];
+    if (!f || !f.content) { return null; }
+    try {
+      return JSON.parse(f.content);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function findWeightGist() {
+    return ghApi('/gists?per_page=100').then(function (list) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].files && list[i].files['weight-tracker.json']) {
+          return list[i];
+        }
+      }
+      return null;
+    });
+  }
+
   function syncSaveSettings(lastSyncKeep) {
     settings.sync = {
       token: syncState.token,
@@ -689,31 +713,39 @@
     els.syncStatus.className = 'sync-status';
     ghApi('/user').then(function (user) {
       syncState.user = user.login;
-      if (syncState.gistId) {
-        syncSaveSettings(settings.sync ? settings.sync.lastSync : null);
-        els.syncToken.value = '';
-        renderSyncStatus();
-        showToast('云端连接成功');
-        return;
-      }
-      els.syncStatus.textContent = '正在创建云端存储…';
-      return ghApi('/gists', {
-        method: 'POST',
-        body: JSON.stringify({
-          description: '每日体重记录 - 云端数据',
-          public: false,
-          files: {
-            'weight-tracker.json': {
-              content: JSON.stringify(buildPayload(), null, 2)
-            }
-          }
-        })
-      }).then(function (g) {
-        syncState.gistId = g.id;
-        syncSaveSettings(null);
-        els.syncToken.value = '';
-        renderSyncStatus();
-        showToast('云端连接成功，已自动上传当前数据');
+      return findWeightGist().then(function (found) {
+        if (found) {
+          syncState.gistId = found.id;
+          syncSaveSettings(settings.sync ? settings.sync.lastSync : null);
+          els.syncToken.value = '';
+          renderSyncStatus();
+          showToast('云端连接成功（已找到你的体重数据）');
+        } else if (syncState.gistId) {
+          syncSaveSettings(settings.sync ? settings.sync.lastSync : null);
+          els.syncToken.value = '';
+          renderSyncStatus();
+          showToast('云端连接成功');
+        } else {
+          els.syncStatus.textContent = '正在创建云端存储…';
+          return ghApi('/gists', {
+            method: 'POST',
+            body: JSON.stringify({
+              description: '每日体重记录 - 云端数据',
+              public: false,
+              files: {
+                'weight-tracker.json': {
+                  content: JSON.stringify(buildPayload(), null, 2)
+                }
+              }
+            })
+          }).then(function (g) {
+            syncState.gistId = g.id;
+            syncSaveSettings(null);
+            els.syncToken.value = '';
+            renderSyncStatus();
+            showToast('云端连接成功，已自动上传当前数据');
+          });
+        }
       });
     }).catch(function (e) {
       syncErr(e);
@@ -757,11 +789,25 @@
     }
     els.syncStatus.textContent = '正在从云端下载…';
     els.syncStatus.className = 'sync-status';
-    ghApi('/gists/' + syncState.gistId).then(function (g) {
-      var f = g.files && g.files['weight-tracker.json'];
-      if (!f || !f.content) { throw new Error('云端还没有数据'); }
-      var data = JSON.parse(f.content);
-      var cloud = normalizeRecords(Array.isArray(data.records) ? data.records : []);
+    var fetchData = function (gistId) {
+      return ghApi('/gists/' + gistId).then(function (g) {
+        var data = parseGistFile(g);
+        if (data && Array.isArray(data.records) && data.records.length) { return data; }
+        return findWeightGist().then(function (found) {
+          if (found && found.id !== gistId) {
+            syncState.gistId = found.id;
+            return ghApi('/gists/' + found.id).then(function (g2) {
+              var d2 = parseGistFile(g2);
+              if (d2 && Array.isArray(d2.records) && d2.records.length) { return d2; }
+              throw new Error('云端没有有效记录');
+            });
+          }
+          throw new Error('云端没有有效记录');
+        });
+      });
+    };
+    fetchData(syncState.gistId).then(function (data) {
+      var cloud = normalizeRecords(data.records);
       if (!cloud.length) { throw new Error('云端没有有效记录'); }
       if (!confirm('将用云端的 ' + cloud.length + ' 条记录覆盖本地 ' + records.length + ' 条，继续吗？')) { return; }
       records = cloud;
@@ -798,9 +844,21 @@
     var s = settings.sync || {};
     if (!s.autoMerge || !syncState.token || !syncState.gistId) { return; }
     ghApi('/gists/' + syncState.gistId).then(function (g) {
-      var f = g.files && g.files['weight-tracker.json'];
-      if (!f || !f.content) { return; }
-      var data = JSON.parse(f.content);
+      var data = parseGistFile(g);
+      if (!data || !Array.isArray(data.records) || !data.records.length) {
+        return findWeightGist().then(function (found) {
+          if (found && found.id !== syncState.gistId) {
+            syncState.gistId = found.id;
+            return ghApi('/gists/' + found.id).then(function (g2) {
+              return parseGistFile(g2);
+            });
+          }
+          return null;
+        });
+      }
+      return data;
+    }).then(function (data) {
+      if (!data) { return; }
       var cloud = normalizeRecords(Array.isArray(data.records) ? data.records : []);
       if (!cloud.length) { return; }
       var map = {};
