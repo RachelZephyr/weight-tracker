@@ -39,6 +39,7 @@
     progressFill: $('progressFill'),
     weeklyList: $('weeklyList'),
     weeklyRange: $('weeklyRange'),
+    weeklyPagination: $('weeklyPagination'),
     heatmap: $('heatmap'),
     heatmapRange: $('heatmapRange'),
     recordTable: $('recordTable'),
@@ -70,6 +71,8 @@
   var editingDate = null;
   var listPage = 1;
   var PAGE_SIZE = 10;
+  var weeklyPage = 1;
+  var WEEKLY_PAGE_SIZE = 5;
   var chartPoints = [];
   var toastTimer = null;
   var resizeTimer = null;
@@ -502,17 +505,22 @@
       if (!map[key]) { map[key] = []; }
       map[key].push(r.weight);
     });
-    var weeks = Object.keys(map).sort().reverse().slice(0, 8);
-    els.weeklyRange.textContent = weeks.length ? '最近 ' + weeks.length + ' 周' : '';
+    var weeks = Object.keys(map).sort().reverse();
+    var totalPages = Math.max(1, Math.ceil(weeks.length / WEEKLY_PAGE_SIZE));
+    if (weeklyPage > totalPages) { weeklyPage = totalPages; }
+    var start = (weeklyPage - 1) * WEEKLY_PAGE_SIZE;
+    var pageWeeks = weeks.slice(start, start + WEEKLY_PAGE_SIZE);
+    els.weeklyRange.textContent = weeks.length ? ('共 ' + weeks.length + ' 周') : '';
     if (!weeks.length) {
       els.weeklyList.innerHTML = '<p class="weekly-empty muted">记录后自动按周统计</p>';
+      els.weeklyPagination.innerHTML = '';
       return;
     }
     var html = '';
-    weeks.forEach(function (key, idx) {
+    pageWeeks.forEach(function (key, idx) {
       var ws = map[key];
       var avg = ws.reduce(function (a, b) { return a + b; }, 0) / ws.length;
-      var nextKey = weeks[idx + 1];
+      var nextKey = weeks[start + idx + 1];
       var deltaHtml = '<span class="delta zero">—</span>';
       if (nextKey) {
         var prevAvg = map[nextKey].reduce(function (a, b) { return a + b; }, 0) / map[nextKey].length;
@@ -529,6 +537,19 @@
       '</div>';
     });
     els.weeklyList.innerHTML = html;
+    renderWeeklyPagination(totalPages);
+  }
+
+  function renderWeeklyPagination(totalPages) {
+    if (totalPages <= 1) {
+      els.weeklyPagination.innerHTML = '';
+      return;
+    }
+    var html =
+      '<button type="button" class="btn small page-btn" data-wpage="' + (weeklyPage - 1) + '"' + (weeklyPage <= 1 ? ' disabled' : '') + '>上一页</button>' +
+      '<span class="page-info">第 ' + weeklyPage + ' / ' + totalPages + ' 页</span>' +
+      '<button type="button" class="btn small page-btn" data-wpage="' + (weeklyPage + 1) + '"' + (weeklyPage >= totalPages ? ' disabled' : '') + '>下一页</button>';
+    els.weeklyPagination.innerHTML = html;
   }
 
   function bindChartTooltip() {
@@ -603,6 +624,7 @@
     save(REC_KEY, records);
     resetForm();
     listPage = 1;
+    weeklyPage = 1;
     renderAll();
   }
 
@@ -778,6 +800,7 @@
         save(REC_KEY, records);
         save(SET_KEY, settings);
         listPage = 1;
+        weeklyPage = 1;
         renderAll();
         showToast('导入成功');
       } catch (err) {
@@ -796,6 +819,7 @@
     save(REC_KEY, records);
     if (editingDate) { cancelEdit(); }
     listPage = 1;
+    weeklyPage = 1;
     renderAll();
     showToast('已清空所有记录');
   }
@@ -1166,6 +1190,12 @@
     if (!btn || btn.disabled) { return; }
     listPage = parseInt(btn.getAttribute('data-page'), 10) || 1;
     renderTable();
+  });
+  els.weeklyPagination.addEventListener('click', function (e) {
+    var btn = e.target.closest('button.page-btn');
+    if (!btn || btn.disabled) { return; }
+    weeklyPage = parseInt(btn.getAttribute('data-wpage'), 10) || 1;
+    renderWeekly();
   });
   els.exportBtn.addEventListener('click', exportData);
   els.importFile.addEventListener('change', handleImport);
