@@ -26,6 +26,8 @@
     statCount: $('statCount'),
     statGoal: $('statGoal'),
     statGoalText: $('statGoalText'),
+    statBmi: $('statBmi'),
+    statBmiText: $('statBmiText'),
     statStatus: $('statStatus'),
     statStatusText: $('statStatusText'),
     chart: $('chart'),
@@ -33,12 +35,19 @@
     chartEmpty: $('chartEmpty'),
     tooltip: $('tooltip'),
     chartRange: $('chartRange'),
+    progressText: $('progressText'),
+    progressFill: $('progressFill'),
+    heatmap: $('heatmap'),
+    heatmapRange: $('heatmapRange'),
     recordTable: $('recordTable'),
     recordCount: $('recordCount'),
     listEmpty: $('listEmpty'),
     exportBtn: $('exportBtn'),
     importFile: $('importFile'),
     clearBtn: $('clearBtn'),
+    todayLine: $('todayLine'),
+    heightInput: $('heightInput'),
+    heightSaveBtn: $('heightSaveBtn'),
     syncToken: $('syncToken'),
     syncAutoMerge: $('syncAutoMerge'),
     syncStatus: $('syncStatus'),
@@ -122,6 +131,8 @@
   function renderAll() {
     renderStats();
     renderChart();
+    renderProgress();
+    renderHeatmap();
     renderTable();
   }
 
@@ -186,6 +197,17 @@
       els.statGoal.textContent = '--';
       els.statGoal.className = 'stat-value';
       els.statGoalText.textContent = goal ? '暂无体重记录' : '未设置目标';
+    }
+
+    var height = settings.height || null;
+    if (last && height) {
+      var hm = height / 100;
+      var bmi = last.weight / (hm * hm);
+      els.statBmi.textContent = bmi.toFixed(1);
+      els.statBmiText.textContent = (bmi < 18.5 ? '偏瘦' : bmi < 24 ? '正常' : bmi < 28 ? '超重' : '肥胖') + ' · 按最新体重';
+    } else {
+      els.statBmi.textContent = '--';
+      els.statBmiText.textContent = height ? '暂无体重记录' : '设置身高后自动计算';
     }
 
     els.statStatus.textContent = n ? '正常' : '空';
@@ -308,7 +330,7 @@
     // 目标虚线
     if (goal !== null) {
       var gy = yAt(goal);
-      ctx.strokeStyle = themeDark ? '#fbbf24' : '#d97706';
+      ctx.strokeStyle = themeDark ? '#c0c0c0' : '#6b6b6b';
       ctx.lineWidth = 1.4;
       ctx.setLineDash([6, 4]);
       ctx.beginPath();
@@ -316,7 +338,7 @@
       ctx.lineTo(pad.l + plotW, gy);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = themeDark ? '#fbbf24' : '#d97706';
+      ctx.fillStyle = themeDark ? '#c0c0c0' : '#6b6b6b';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'bottom';
       ctx.fillText('目标 ' + fmtWeight(goal), pad.l + 6, gy - 4);
@@ -359,6 +381,7 @@
       if (isLast) {
         ctx.beginPath();
         ctx.arc(x, yy, 9, 0, Math.PI * 2);
+        ctx.strokeStyle = themeDark ? '#ffffff' : '#000000';
         ctx.lineWidth = 1.2;
         ctx.stroke();
       }
@@ -366,6 +389,78 @@
     });
 
     els.chartRange.textContent = asc[0].date.slice(5).replace('-', '/') + ' 至 ' + asc[lastIdx].date.slice(5).replace('-', '/');
+  }
+
+  function renderProgress() {
+    var asc = sortedAsc();
+    var goal = settings.goal || null;
+    var fill = els.progressFill;
+    var text = els.progressText;
+    if (!goal) {
+      fill.style.width = '0%';
+      text.textContent = '设置目标体重后显示';
+      return;
+    }
+    if (asc.length < 2) {
+      fill.style.width = '0%';
+      text.textContent = asc.length ? '再记录一天即可开始计算' : '记录两笔数据后开始计算';
+      return;
+    }
+    var start = asc[0].weight;
+    var cur = asc[asc.length - 1].weight;
+    var p;
+    if (goal === start) {
+      p = cur === goal ? 1 : 0;
+    } else if (goal < start) {
+      p = (start - cur) / (start - goal);
+    } else {
+      p = (cur - start) / (goal - start);
+    }
+    p = Math.max(0, Math.min(1, p));
+    fill.style.width = (p * 100).toFixed(0) + '%';
+    if (p >= 1) {
+      var overshoot = goal < start ? cur - goal : goal - cur;
+      text.textContent = overshoot > 0 ? ('已达成目标 🎉 超出 ' + fmtWeight(overshoot) + ' kg') : '已达成目标 🎉';
+    } else {
+      var remain = Math.abs(goal < start ? cur - goal : goal - cur);
+      text.textContent = '已完成 ' + (p * 100).toFixed(0) + '% · 还差 ' + fmtWeight(remain) + ' kg';
+    }
+  }
+
+  function keyOf(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function renderHeatmap() {
+    var asc = sortedAsc();
+    var map = {};
+    asc.forEach(function (r) { map[r.date] = true; });
+    var weeks = 12;
+    var today = new Date();
+    var tKey = keyOf(today);
+    var start = new Date(today);
+    start.setDate(today.getDate() - (weeks * 7 - 1));
+    var html = '';
+    var count = 0;
+    for (var w = 0; w < weeks; w++) {
+      html += '<div class="hm-week">';
+      for (var d = 0; d < 7; d++) {
+        var day = new Date(start);
+        day.setDate(start.getDate() + w * 7 + d);
+        var k = keyOf(day);
+        if (day > today) {
+          html += '<div class="hm-cell future"></div>';
+          continue;
+        }
+        var on = !!map[k];
+        if (on) { count++; }
+        var cls = 'hm-cell' + (on ? ' on' : '') + (k === tKey ? ' today' : '');
+        html += '<div class="' + cls + '" title="' + k + (on ? ' · 有记录' : '') + '"></div>';
+      }
+      html += '</div>';
+    }
+    els.heatmap.innerHTML = html;
+    els.heatmapRange.textContent = '最近 ' + (weeks * 7) + ' 天 · 已记录 ' + count + ' 天';
   }
 
   function bindChartTooltip() {
@@ -511,6 +606,26 @@
     showToast('目标已设为 ' + fmtWeight(settings.goal) + ' kg');
   }
 
+  function saveHeight() {
+    var raw = els.heightInput.value.trim();
+    if (raw === '') {
+      settings.height = null;
+      save(SET_KEY, settings);
+      renderStats();
+      showToast('已清除身高');
+      return;
+    }
+    var v = parseFloat(raw);
+    if (!isFinite(v) || v < 100 || v > 250) {
+      showToast('请输入 100–250 之间的身高（cm）');
+      return;
+    }
+    settings.height = Math.round(v * 10) / 10;
+    save(SET_KEY, settings);
+    renderStats();
+    showToast('身高已保存，BMI 已更新');
+  }
+
   function applyTheme() {
     var dark = settings.theme === 'dark';
     document.body.classList.toggle('dark', dark);
@@ -561,6 +676,10 @@
         if (data && data.goal != null && isFinite(Number(data.goal))) {
           settings.goal = Math.round(Number(data.goal) * 10) / 10;
           els.goalInput.value = settings.goal;
+        }
+        if (data && data.height != null && isFinite(Number(data.height)) && Number(data.height) >= 100 && Number(data.height) <= 250) {
+          settings.height = Math.round(Number(data.height) * 10) / 10;
+          els.heightInput.value = settings.height;
         }
         save(REC_KEY, records);
         save(SET_KEY, settings);
@@ -666,6 +785,7 @@
     return {
       exportedAt: new Date().toISOString(),
       goal: settings.goal || null,
+      height: settings.height || null,
       records: records
     };
   }
@@ -836,6 +956,10 @@
         settings.goal = Math.round(Number(data.goal) * 10) / 10;
         els.goalInput.value = settings.goal;
       }
+      if (data.height != null && isFinite(Number(data.height)) && Number(data.height) >= 100 && Number(data.height) <= 250) {
+        settings.height = Math.round(Number(data.height) * 10) / 10;
+        els.heightInput.value = settings.height;
+      }
       save(REC_KEY, records);
       syncSaveSettings(new Date().toISOString());
       renderAll();
@@ -896,6 +1020,11 @@
         els.goalInput.value = settings.goal;
         changed = true;
       }
+      if (settings.height == null && data.height != null && isFinite(Number(data.height)) && Number(data.height) >= 100 && Number(data.height) <= 250) {
+        settings.height = Math.round(Number(data.height) * 10) / 10;
+        els.heightInput.value = settings.height;
+        changed = true;
+      }
       if (changed) {
         save(REC_KEY, records);
         save(SET_KEY, settings);
@@ -908,11 +1037,18 @@
   // 初始化
   els.dateInput.value = todayStr();
   els.goalInput.value = settings.goal != null ? settings.goal : '';
+  els.heightInput.value = settings.height != null ? settings.height : '';
+  (function fillTodayLine() {
+    var d = new Date();
+    var wd = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()];
+    els.todayLine.textContent = '今天是 ' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + wd;
+  })();
 
   els.form.addEventListener('submit', handleSubmit);
   els.cancelEditBtn.addEventListener('click', cancelEdit);
   els.themeToggle.addEventListener('click', toggleTheme);
   els.goalSaveBtn.addEventListener('click', saveGoal);
+  els.heightSaveBtn.addEventListener('click', saveHeight);
   els.recordTable.addEventListener('click', handleTableClick);
   els.exportBtn.addEventListener('click', exportData);
   els.importFile.addEventListener('change', handleImport);
