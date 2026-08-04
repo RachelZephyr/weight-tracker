@@ -39,11 +39,19 @@
     exportBtn: $('exportBtn'),
     importFile: $('importFile'),
     clearBtn: $('clearBtn'),
+    syncToken: $('syncToken'),
+    syncAutoMerge: $('syncAutoMerge'),
+    syncStatus: $('syncStatus'),
+    syncConnectBtn: $('syncConnectBtn'),
+    syncUploadBtn: $('syncUploadBtn'),
+    syncDownloadBtn: $('syncDownloadBtn'),
+    syncDisconnectBtn: $('syncDisconnectBtn'),
     toast: $('toast')
   };
 
   var records = load(REC_KEY, []);
   var settings = load(SET_KEY, {});
+  var syncState = { token: '', gistId: '', user: '' };
   var editingDate = null;
   var chartPoints = [];
   var toastTimer = null;
@@ -542,20 +550,7 @@
         var data = JSON.parse(reader.result);
         var list = Array.isArray(data) ? data : (data && Array.isArray(data.records) ? data.records : null);
         if (!list) { throw new Error('bad format'); }
-        var cleaned = [];
-        var seen = {};
-        list.forEach(function (item) {
-          var date = item && typeof item.date === 'string' ? item.date : null;
-          var weight = item ? Number(item.weight) : NaN;
-          if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && isFinite(weight) && weight >= 20 && weight <= 300 && !seen[date]) {
-            seen[date] = true;
-            cleaned.push({
-              date: date,
-              weight: Math.round(weight * 10) / 10,
-              note: item.note && typeof item.note === 'string' ? item.note.slice(0, 50) : ''
-            });
-          }
-        });
+        var cleaned = normalizeRecords(list);
         if (!cleaned.length) {
           showToast('备份文件中没有有效记录');
           return;
@@ -590,6 +585,246 @@
     showToast('已清空所有记录');
   }
 
+  // ---------- 云端同步（GitHub Gist） ----------
+
+  function normalizeRecords(list) {
+    var cleaned = [];
+    var seen = {};
+    list.forEach(function (item) {
+      var date = item && typeof item.date === 'string' ? item.date : null;
+      var weight = item ? Number(item.weight) : NaN;
+      if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && isFinite(weight) && weight >= 20 && weight <= 300 && !seen[date]) {
+        seen[date] = true;
+        cleaned.push({
+          date: date,
+          weight: Math.round(weight * 10) / 10,
+          note: item.note && typeof item.note === 'string' ? item.note.slice(0, 50) : ''
+        });
+      }
+    });
+    return cleaned;
+  }
+
+  function loadSyncUi() {
+    var s = settings.sync || {};
+    syncState.token = s.token || '';
+    syncState.gistId = s.gistId || '';
+    syncState.user = s.user || '';
+    els.syncAutoMerge.checked = !!s.autoMerge;
+    renderSyncStatus();
+  }
+
+  function renderSyncStatus() {
+    if (!syncState.token) {
+      els.syncStatus.textContent = '未连接';
+      els.syncStatus.className = 'sync-status';
+      return;
+    }
+    if (!syncState.gistId) {
+      els.syncStatus.textContent = '已保存令牌，云端存储尚未初始化（点“保存并连接”即可）';
+      els.syncStatus.className = 'sync-status';
+      return;
+    }
+    var last = settings.sync && settings.sync.lastSync;
+    var text = '已连接：' + (syncState.user || 'GitHub') + '，云端存储已就绪';
+    if (last) {
+      text += '，上次同步 ' + new Date(last).toLocaleString('zh-CN');
+    }
+    els.syncStatus.textContent = text;
+    els.syncStatus.className = 'sync-status ok';
+  }
+
+  function syncErr(e) {
+    els.syncStatus.textContent = '连接失败：' + e.message;
+    els.syncStatus.className = 'sync-status err';
+  }
+
+  function ghApi(path, options) {
+    var opts = options || {};
+    opts.headers = Object.assign({
+      'Authorization': 'Bearer ' + syncState.token,
+      'Accept': 'application/vnd.github+json'
+    }, opts.headers || {});
+    return fetch('https://api.github.com' + path, opts).then(function (res) {
+      if (!res.ok) {
+        var msg = 'HTTP ' + res.status;
+        return res.json().then(function (j) {
+          if (j && j.message) { msg = j.message; }
+          throw new Error(msg);
+        }, function () {
+          throw new Error(msg);
+        });
+      }
+      return res.json();
+    });
+  }
+
+  function buildPayload() {
+    return {
+      exportedAt: new Date().toISOString(),
+      goal: settings.goal || null,
+      records: records
+    };
+  }
+
+  function syncSaveSettings(lastSyncKeep) {
+    settings.sync = {
+      token: syncState.token,
+      gistId: syncState.gistId,
+      user: syncState.user,
+      autoMerge: els.syncAutoMerge.checked,
+      lastSync: lastSyncKeep || null
+    };
+    save(SET_KEY, settings);
+  }
+
+  function syncConnect() {
+    var raw = els.syncToken.value.trim();
+    if (raw) { syncState.token = raw; }
+    if (!syncState.token) {
+      showToast('请先输入 GitHub 令牌');
+      return;
+    }
+    els.syncStatus.textContent = '正在连接 GitHub…';
+    els.syncStatus.className = 'sync-status';
+    ghApi('/user').then(function (user) {
+      syncState.user = user.login;
+      if (syncState.gistId) {
+        syncSaveSettings(settings.sync ? settings.sync.lastSync : null);
+        els.syncToken.value = '';
+        renderSyncStatus();
+        showToast('云端连接成功');
+        return;
+      }
+      els.syncStatus.textContent = '正在创建云端存储…';
+      return ghApi('/gists', {
+        method: 'POST',
+        body: JSON.stringify({
+          description: '每日体重记录 - 云端数据',
+          public: false,
+          files: {
+            'weight-tracker.json': {
+              content: JSON.stringify(buildPayload(), null, 2)
+            }
+          }
+        })
+      }).then(function (g) {
+        syncState.gistId = g.id;
+        syncSaveSettings(null);
+        els.syncToken.value = '';
+        renderSyncStatus();
+        showToast('云端连接成功，已自动上传当前数据');
+      });
+    }).catch(function (e) {
+      syncErr(e);
+      showToast('连接失败，请检查令牌');
+    });
+  }
+
+  function syncUpload() {
+    if (!syncState.token || !syncState.gistId) {
+      showToast('请先“保存并连接”');
+      return;
+    }
+    if (!records.length) {
+      showToast('还没有可上传的记录');
+      return;
+    }
+    if (!confirm('将把本地 ' + records.length + ' 条记录上传到云端并覆盖云端数据，继续吗？')) { return; }
+    ghApi('/gists/' + syncState.gistId, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        files: {
+          'weight-tracker.json': {
+            content: JSON.stringify(buildPayload(), null, 2)
+          }
+        }
+      })
+    }).then(function () {
+      syncSaveSettings(new Date().toISOString());
+      renderSyncStatus();
+      showToast('已上传到云端');
+    }).catch(function (e) {
+      syncErr(e);
+      showToast('上传失败');
+    });
+  }
+
+  function syncDownload() {
+    if (!syncState.token || !syncState.gistId) {
+      showToast('请先“保存并连接”');
+      return;
+    }
+    els.syncStatus.textContent = '正在从云端下载…';
+    els.syncStatus.className = 'sync-status';
+    ghApi('/gists/' + syncState.gistId).then(function (g) {
+      var f = g.files && g.files['weight-tracker.json'];
+      if (!f || !f.content) { throw new Error('云端还没有数据'); }
+      var data = JSON.parse(f.content);
+      var cloud = normalizeRecords(Array.isArray(data.records) ? data.records : []);
+      if (!cloud.length) { throw new Error('云端没有有效记录'); }
+      if (!confirm('将用云端的 ' + cloud.length + ' 条记录覆盖本地 ' + records.length + ' 条，继续吗？')) { return; }
+      records = cloud;
+      if (data.goal != null && isFinite(Number(data.goal))) {
+        settings.goal = Math.round(Number(data.goal) * 10) / 10;
+        els.goalInput.value = settings.goal;
+      }
+      save(REC_KEY, records);
+      syncSaveSettings(new Date().toISOString());
+      renderAll();
+      renderSyncStatus();
+      showToast('已从云端同步');
+    }).catch(function (e) {
+      syncErr(e);
+      showToast('下载失败');
+    });
+  }
+
+  function syncDisconnect() {
+    if (!syncState.token && !settings.sync) {
+      showToast('本来就没有连接');
+      return;
+    }
+    syncState = { token: '', gistId: '', user: '' };
+    settings.sync = { autoMerge: false };
+    save(SET_KEY, settings);
+    els.syncToken.value = '';
+    els.syncAutoMerge.checked = false;
+    renderSyncStatus();
+    showToast('已清除令牌并断开连接');
+  }
+
+  function syncAutoMergeOnce() {
+    var s = settings.sync || {};
+    if (!s.autoMerge || !syncState.token || !syncState.gistId) { return; }
+    ghApi('/gists/' + syncState.gistId).then(function (g) {
+      var f = g.files && g.files['weight-tracker.json'];
+      if (!f || !f.content) { return; }
+      var data = JSON.parse(f.content);
+      var cloud = normalizeRecords(Array.isArray(data.records) ? data.records : []);
+      if (!cloud.length) { return; }
+      var map = {};
+      var changed = false;
+      records.forEach(function (r) { map[r.date] = r; });
+      cloud.forEach(function (r) {
+        if (!map[r.date]) { map[r.date] = r; changed = true; }
+      });
+      records = Object.keys(map).map(function (k) { return map[k]; })
+        .sort(function (a, b) { return a.date.localeCompare(b.date); });
+      if (settings.goal == null && data.goal != null && isFinite(Number(data.goal))) {
+        settings.goal = Math.round(Number(data.goal) * 10) / 10;
+        els.goalInput.value = settings.goal;
+        changed = true;
+      }
+      if (changed) {
+        save(REC_KEY, records);
+        save(SET_KEY, settings);
+        renderAll();
+        showToast('已自动合并云端数据');
+      }
+    }).catch(function () { /* 静默失败，不打扰用户 */ });
+  }
+
   // 初始化
   els.dateInput.value = todayStr();
   els.goalInput.value = settings.goal != null ? settings.goal : '';
@@ -602,6 +837,15 @@
   els.exportBtn.addEventListener('click', exportData);
   els.importFile.addEventListener('change', handleImport);
   els.clearBtn.addEventListener('click', clearAll);
+  els.syncConnectBtn.addEventListener('click', syncConnect);
+  els.syncUploadBtn.addEventListener('click', syncUpload);
+  els.syncDownloadBtn.addEventListener('click', syncDownload);
+  els.syncDisconnectBtn.addEventListener('click', syncDisconnect);
+  els.syncAutoMerge.addEventListener('change', function () {
+    settings.sync = settings.sync || {};
+    settings.sync.autoMerge = els.syncAutoMerge.checked;
+    save(SET_KEY, settings);
+  });
 
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
@@ -609,6 +853,8 @@
   });
 
   bindChartTooltip();
+  loadSyncUi();
   applyTheme();
   renderAll();
+  syncAutoMergeOnce();
 })();

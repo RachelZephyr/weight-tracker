@@ -125,6 +125,29 @@
       </div>
       <p class="muted hint">数据仅保存在当前浏览器的本地存储中，不会上传到任何服务器，建议定期导出备份。</p>
     </section>
+
+    <section class="card sync-card">
+      <h2>云端同步</h2>
+      <p class="muted">把数据存到你的 GitHub Gist，换设备或换浏览器时下载回来，就能保持同一份记录。</p>
+      <div class="sync-form">
+        <div class="field field-wide">
+          <label for="syncToken">GitHub 令牌（Token）</label>
+          <input type="password" id="syncToken" placeholder="ghp_… 已保存则留空，输入新令牌可更换" autocomplete="off">
+        </div>
+        <label class="check-row">
+          <input type="checkbox" id="syncAutoMerge">
+          <span>打开页面时自动从云端合并（不覆盖本地记录）</span>
+        </label>
+        <div class="form-actions sync-actions">
+          <button type="button" class="btn primary" id="syncConnectBtn">保存并连接</button>
+          <button type="button" class="btn" id="syncUploadBtn">上传到云端</button>
+          <button type="button" class="btn" id="syncDownloadBtn">从云端下载</button>
+          <button type="button" class="btn ghost" id="syncDisconnectBtn">清除令牌</button>
+        </div>
+        <p class="sync-status" id="syncStatus">未连接</p>
+      </div>
+      <p class="muted hint">令牌只保存在你自己的浏览器本地，不会发送给除 GitHub 以外的任何人。建议创建令牌时只勾选 Gist 权限，并设置较短有效期；不用时可以点“清除令牌”。</p>
+    </section>
   </main>
 
   <footer class="site-footer">
