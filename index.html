@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="每日体重记录工具：记录、统计、趋势图，数据保存在本地浏览器。">
+  <title>每日体重记录</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-title">
+        <h1>⚖️ 每日体重记录</h1>
+        <p class="tagline">记录每一天的变化，看见自己的坚持。</p>
+      </div>
+      <button type="button" id="themeToggle" class="icon-btn header-icon" title="切换深色 / 浅色模式" aria-label="切换主题">🌙</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card entry-card" aria-label="记录体重">
+      <h2>记一笔</h2>
+      <form id="entryForm" class="entry-form" autocomplete="off">
+        <div class="field">
+          <label for="dateInput">日期</label>
+          <input type="date" id="dateInput" required>
+        </div>
+        <div class="field">
+          <label for="weightInput">体重（kg）</label>
+          <input type="number" id="weightInput" min="20" max="300" step="0.1" placeholder="例如 65.5" required>
+        </div>
+        <div class="field field-wide">
+          <label for="noteInput">备注（可选）</label>
+          <input type="text" id="noteInput" maxlength="50" placeholder="例如：晨起空腹、运动后">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn primary" id="submitBtn">添加记录</button>
+          <button type="button" class="btn ghost hidden" id="cancelEditBtn">取消编辑</button>
+        </div>
+      </form>
+
+      <div class="goal-row">
+        <label for="goalInput">目标体重（kg）</label>
+        <input type="number" id="goalInput" min="20" max="300" step="0.1" placeholder="可选">
+        <button type="button" class="btn small" id="goalSaveBtn">保存目标</button>
+      </div>
+    </section>
+
+    <section class="stats" aria-label="统计概览">
+      <div class="stat-card">
+        <span class="stat-label">当前体重</span>
+        <div><span class="stat-value" id="statCurrent">--</span><span class="stat-unit">kg</span></div>
+        <span class="stat-delta zero" id="statDelta"></span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">总变化</span>
+        <div><span class="stat-value" id="statTotal">--</span><span class="stat-unit">kg</span></div>
+        <span class="stat-delta zero" id="statTotalDelta"></span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">最高 / 最低</span>
+        <div><span class="stat-value" id="statMax">--</span><span class="stat-unit">kg</span></div>
+        <span class="stat-sub" id="statMin">最低：--</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">平均体重</span>
+        <div><span class="stat-value" id="statAvg">--</span><span class="stat-unit">kg</span></div>
+        <span class="stat-sub" id="statCount">共 0 天</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">距目标</span>
+        <div><span class="stat-value" id="statGoal">--</span><span class="stat-unit">kg</span></div>
+        <span class="stat-sub" id="statGoalText">未设置目标</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">数据状态</span>
+        <div><span class="stat-value stat-value-sm" id="statStatus">--</span></div>
+        <span class="stat-sub" id="statStatusText">本地存储</span>
+      </div>
+    </section>
+
+    <section class="card chart-card">
+      <div class="card-head">
+        <h2>趋势</h2>
+        <span class="muted" id="chartRange"></span>
+      </div>
+      <div class="chart-wrap" id="chartWrap">
+        <canvas id="chart" height="260" aria-label="体重趋势图"></canvas>
+        <div class="chart-empty" id="chartEmpty">还没有数据，添加第一条记录后这里会出现趋势图</div>
+        <div class="tooltip hidden" id="tooltip"></div>
+      </div>
+    </section>
+
+    <section class="card list-card">
+      <div class="card-head">
+        <h2>历史记录</h2>
+        <span class="muted" id="recordCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>体重</th>
+              <th>较前一天</th>
+              <th>备注</th>
+              <th class="th-actions">操作</th>
+            </tr>
+          </thead>
+          <tbody id="recordTable"></tbody>
+        </table>
+      </div>
+      <div class="list-empty hidden" id="listEmpty">还没有记录，从“记一笔”开始吧。</div>
+    </section>
+
+    <section class="card data-card">
+      <h2>数据管理</h2>
+      <div class="data-actions">
+        <button type="button" class="btn" id="exportBtn">导出备份（JSON）</button>
+        <label class="btn file-btn" for="importFile">导入备份
+          <input type="file" id="importFile" accept="application/json,.json" hidden>
+        </label>
+        <button type="button" class="btn danger" id="clearBtn">清空所有数据</button>
+      </div>
+      <p class="muted hint">数据仅保存在当前浏览器的本地存储中，不会上传到任何服务器，建议定期导出备份。</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>由 Codex + Sites 构建 · 数据仅存于本地浏览器</p>
+  </footer>
+
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
