@@ -682,12 +682,31 @@
 
   function findWeightGist() {
     return ghApi('/gists?per_page=100').then(function (list) {
-      for (var i = 0; i < list.length; i++) {
-        if (list[i].files && list[i].files['weight-tracker.json']) {
-          return list[i];
-        }
-      }
-      return null;
+      return list.filter(function (g) {
+        return g.files && g.files['weight-tracker.json'];
+      });
+    });
+  }
+
+  function findBestWeightGist() {
+    return findWeightGist().then(function (candidates) {
+      if (!candidates.length) { return null; }
+      return Promise.all(candidates.map(function (g) {
+        return ghApi('/gists/' + g.id).then(function (full) {
+          var data = parseGistFile(full);
+          return {
+            gist: full,
+            count: data && Array.isArray(data.records) ? data.records.length : 0,
+            updated: full.updated_at || ''
+          };
+        });
+      })).then(function (results) {
+        results.sort(function (a, b) {
+          if (a.count !== b.count) { return b.count - a.count; }
+          return a.updated < b.updated ? 1 : -1;
+        });
+        return results[0].gist;
+      });
     });
   }
 
@@ -713,13 +732,15 @@
     els.syncStatus.className = 'sync-status';
     ghApi('/user').then(function (user) {
       syncState.user = user.login;
-      return findWeightGist().then(function (found) {
+      return findBestWeightGist().then(function (found) {
         if (found) {
           syncState.gistId = found.id;
+          var data = parseGistFile(found);
+          var hasRecords = data && Array.isArray(data.records) && data.records.length > 0;
           syncSaveSettings(settings.sync ? settings.sync.lastSync : null);
           els.syncToken.value = '';
           renderSyncStatus();
-          showToast('云端连接成功（已找到你的体重数据）');
+          showToast(hasRecords ? '云端连接成功（已找到你的体重数据）' : '云端连接成功（云端暂无记录）');
         } else if (syncState.gistId) {
           syncSaveSettings(settings.sync ? settings.sync.lastSync : null);
           els.syncToken.value = '';
@@ -789,24 +810,24 @@
     }
     els.syncStatus.textContent = '正在从云端下载…';
     els.syncStatus.className = 'sync-status';
-    var fetchData = function (gistId) {
-      return ghApi('/gists/' + gistId).then(function (g) {
+    var fetchData = function () {
+      return ghApi('/gists/' + syncState.gistId).then(function (g) {
         var data = parseGistFile(g);
         if (data && Array.isArray(data.records) && data.records.length) { return data; }
-        return findWeightGist().then(function (found) {
-          if (found && found.id !== gistId) {
-            syncState.gistId = found.id;
-            return ghApi('/gists/' + found.id).then(function (g2) {
-              var d2 = parseGistFile(g2);
-              if (d2 && Array.isArray(d2.records) && d2.records.length) { return d2; }
-              throw new Error('云端没有有效记录');
-            });
+        return findBestWeightGist().then(function (best) {
+          if (best) {
+            if (best.id !== syncState.gistId) {
+              syncState.gistId = best.id;
+              syncSaveSettings(settings.sync ? settings.sync.lastSync : null);
+            }
+            var d2 = parseGistFile(best);
+            if (d2 && Array.isArray(d2.records) && d2.records.length) { return d2; }
           }
           throw new Error('云端没有有效记录');
         });
       });
     };
-    fetchData(syncState.gistId).then(function (data) {
+    fetchData().then(function (data) {
       var cloud = normalizeRecords(data.records);
       if (!cloud.length) { throw new Error('云端没有有效记录'); }
       if (!confirm('将用云端的 ' + cloud.length + ' 条记录覆盖本地 ' + records.length + ' 条，继续吗？')) { return; }
@@ -846,12 +867,13 @@
     ghApi('/gists/' + syncState.gistId).then(function (g) {
       var data = parseGistFile(g);
       if (!data || !Array.isArray(data.records) || !data.records.length) {
-        return findWeightGist().then(function (found) {
-          if (found && found.id !== syncState.gistId) {
-            syncState.gistId = found.id;
-            return ghApi('/gists/' + found.id).then(function (g2) {
-              return parseGistFile(g2);
-            });
+        return findBestWeightGist().then(function (best) {
+          if (best) {
+            if (best.id !== syncState.gistId) {
+              syncState.gistId = best.id;
+              syncSaveSettings(settings.sync ? settings.sync.lastSync : null);
+            }
+            return parseGistFile(best);
           }
           return null;
         });
