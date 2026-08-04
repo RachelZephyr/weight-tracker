@@ -2,17 +2,20 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description" content="每日体重记录工具：记录、统计、趋势图，数据保存在本地浏览器。">
   <title>每日体重记录</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div class="flag-stripe" aria-hidden="true"></div>
   <header class="site-header">
     <div class="header-inner">
       <div class="header-title">
+        <p class="greeting">嗨，Rachel 👋</p>
         <h1>⚖️ 每日体重记录</h1>
-        <p class="tagline">记录每一天的变化，看见自己的坚持。</p>
+        <p class="today" id="todayLine">正在加载日期…</p>
+        <p class="quote">“不要因为一时的波动而放弃之前的努力。”</p>
       </div>
       <button type="button" id="themeToggle" class="icon-btn header-icon" title="切换深色 / 浅色模式" aria-label="切换主题">🌙</button>
     </div>
@@ -45,6 +48,11 @@
         <input type="number" id="goalInput" min="20" max="300" step="0.1" placeholder="可选">
         <button type="button" class="btn small" id="goalSaveBtn">保存目标</button>
       </div>
+      <div class="goal-row height-row">
+        <label for="heightInput">身高（cm）</label>
+        <input type="number" id="heightInput" min="100" max="250" step="0.5" placeholder="用于计算 BMI">
+        <button type="button" class="btn small" id="heightSaveBtn">保存身高</button>
+      </div>
     </section>
 
     <section class="stats" aria-label="统计概览">
@@ -74,9 +82,24 @@
         <span class="stat-sub" id="statGoalText">未设置目标</span>
       </div>
       <div class="stat-card">
+        <span class="stat-label">BMI</span>
+        <div><span class="stat-value" id="statBmi">--</span></div>
+        <span class="stat-sub" id="statBmiText">设置身高后自动计算</span>
+      </div>
+      <div class="stat-card">
         <span class="stat-label">数据状态</span>
         <div><span class="stat-value stat-value-sm" id="statStatus">--</span></div>
         <span class="stat-sub" id="statStatusText">本地存储</span>
+      </div>
+    </section>
+
+    <section class="card progress-card">
+      <div class="card-head">
+        <h2>目标进度</h2>
+        <span class="muted" id="progressText">设置目标体重后显示</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill"></div>
       </div>
     </section>
 
@@ -90,6 +113,14 @@
         <div class="chart-empty" id="chartEmpty">还没有数据，添加第一条记录后这里会出现趋势图</div>
         <div class="tooltip hidden" id="tooltip"></div>
       </div>
+    </section>
+
+    <section class="card heatmap-card">
+      <div class="card-head">
+        <h2>记录日历</h2>
+        <span class="muted" id="heatmapRange"></span>
+      </div>
+      <div class="heatmap" id="heatmap" aria-label="体重记录日历热力图"></div>
     </section>
 
     <section class="card list-card">
